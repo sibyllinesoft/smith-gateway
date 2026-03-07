@@ -1,18 +1,21 @@
 # CLI
 
-The `smith` CLI loads the tool catalog from `catalog` at startup and exposes each server/tool pair as Cobra commands.
+The `smith` CLI exists so humans and scripts can call any tool in the catalog without knowing which sidecar hosts it, what protocol it speaks, or how it authenticates.
 
-## What It Does
+You don't write `smith` subcommands — they're generated at startup. The CLI fetches the tool catalog, and for each registered tool, it creates a command with flags derived from the tool's input schema. If a new sidecar registers a tool called `billing.get_invoice` with parameters `invoice_id` and `format`, you'll immediately see `smith billing get_invoice --invoice-id ... --format ...` without any code changes to the CLI itself.
 
-- loads `/api/tools` from `catalog`
-- optionally asks `catalog` for the identity-filtered catalog
-- creates one top-level command per server
-- creates one subcommand per tool
-- generates flags from each tool's JSON input schema
+## How it works
 
-## Usage
+1. On startup, the CLI calls `GET /api/tools` on catalog
+2. By default it requests only tools authorized for the current identity token
+3. For each tool, it creates a Cobra command under the tool's server name (e.g., `smith fs read_file`, `smith github get_issue`)
+4. Flags are generated from each tool's JSON input schema — types, required/optional, and descriptions all come from the schema
 
-List the loaded catalog:
+This means the CLI's command surface is always in sync with whatever's in the catalog. Add a sidecar, restart catalog, and the CLI picks up the new tools automatically.
+
+## Quick start
+
+List everything in the catalog:
 
 ```bash
 go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" catalog list
@@ -24,52 +27,57 @@ Call a tool with generated flags:
 go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" fs read_file --path /tmp/demo.txt
 ```
 
-Call a tool with raw JSON arguments:
+## More ways to pass arguments
+
+Pass raw JSON when the generated flags aren't enough:
 
 ```bash
 go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" github get_issue --args-json '{"owner":"octocat","repo":"Hello-World","issue_number":1}'
 ```
 
-Read tool arguments from a file:
+Read arguments from a file:
 
 ```bash
 go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" github get_issue --args-json @issue-args.json
 ```
 
-Read tool arguments from stdin:
+Read arguments from stdin (useful for piping):
 
 ```bash
 printf '{"owner":"octocat","repo":"Hello-World","issue_number":1}\n' | \
 go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" github get_issue --args-json @-
 ```
 
-## Configuration
+## Reference
 
-Flags:
+### Flags
 
-- `--catalog-url`
-- `--index-url`
-- `--api-token`
-- `--identity-token`
-- `--identity-token-file`
-- `--authorized-only`
-- `--timeout`
-- `--output`
+| Flag | Description |
+|------|-------------|
+| `--catalog-url` | Catalog service URL |
+| `--index-url` | Alias for `--catalog-url` (compatibility) |
+| `--api-token` | API token for catalog authentication |
+| `--identity-token` | Identity token for authorization filtering |
+| `--identity-token-file` | Read identity token from a file |
+| `--authorized-only` | Only show authorized tools (default: true) |
+| `--timeout` | Request timeout |
+| `--output` | Output format |
 
-Environment variables:
+### Environment variables
 
-- `SMITH_CATALOG_URL`
-- `SMITH_INDEX_URL`
-- `SMITH_API_TOKEN`
-- `SMITH_IDENTITY_TOKEN`
-- `SMITH_IDENTITY_TOKEN_FILE`
-- `SMITH_AUTHORIZED_ONLY`
-- `SMITH_TIMEOUT`
-- `SMITH_OUTPUT`
+| Variable | Equivalent flag |
+|----------|----------------|
+| `SMITH_CATALOG_URL` | `--catalog-url` |
+| `SMITH_INDEX_URL` | `--index-url` |
+| `SMITH_API_TOKEN` | `--api-token` |
+| `SMITH_IDENTITY_TOKEN` | `--identity-token` |
+| `SMITH_IDENTITY_TOKEN_FILE` | `--identity-token-file` |
+| `SMITH_AUTHORIZED_ONLY` | `--authorized-only` |
+| `SMITH_TIMEOUT` | `--timeout` |
+| `SMITH_OUTPUT` | `--output` |
 
-## Notes
+### Notes
 
-- The CLI asks for the authorized-only catalog by default.
-- If `catalog` is configured to require an identity token for discovery, provide `--identity-token` or `--identity-token-file`.
-- `--index-url` and `SMITH_INDEX_URL` remain supported as compatibility aliases.
-- Generated flags come from the tool input schema, so the exact command surface depends on the current catalog.
+- The CLI asks for the authorized-only catalog by default. If catalog requires an identity token for discovery, provide `--identity-token` or `--identity-token-file`.
+- `--index-url` and `SMITH_INDEX_URL` are supported as compatibility aliases.
+- Generated flags come from the tool input schema, so the exact command surface depends on the current catalog contents.

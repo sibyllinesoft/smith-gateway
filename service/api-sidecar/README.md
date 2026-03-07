@@ -1,112 +1,106 @@
 # api-sidecar
 
-`api-sidecar` exposes OpenAPI-described HTTP APIs through the same shim contract used by `mcp-sidecar`.
+Most APIs already have OpenAPI specs. `api-sidecar` turns them into Smith tools without writing any MCP code — point it at an OpenAPI 3.x document (local file, URL, or auto-discovered from the target service), and it compiles each operation into a tool that catalog can discover and the CLI can call.
 
-It is designed for remote upstreams first: point it at a remote OpenAPI document or a remote service that exposes one at a standard path, and the sidecar compiles operations into tools that `catalog` can ingest.
+This means if a service already publishes an OpenAPI spec, you can add it to the Smith catalog by writing a short YAML config file and starting a sidecar. No custom adapter code, no MCP implementation.
 
-## Golden Path
+## How it works
 
-- OpenAPI 3.x is required
-- Arazzo is optional
-- HTTP+JSON only
-- sidecar-managed auth
-- one OpenAPI operation becomes one tool
+The sidecar is a compiler plus executor:
 
-## HTTP Surface
+1. **Load** — Fetches the OpenAPI spec from a configured source (file, URL, or by probing standard paths on the target)
+2. **Compile** — Turns each OpenAPI operation into a tool definition: path/query/header params and request body fields become tool input schema fields, auth gets handled by the sidecar config
+3. **Serve** — Exposes the same HTTP contract as `mcp-sidecar` (`/health`, `/tools`, `/tools/:name`, `/reload`), so catalog treats it identically
+4. **Execute** — When a tool is called, the sidecar maps the tool arguments back to HTTP request parameters, injects auth credentials, makes the upstream HTTP call, and returns the JSON response
 
-- `GET /health`
-- `GET /tools`
-- `POST /tools/:name`
-- `POST /reload`
+One OpenAPI operation becomes one tool. The tool name comes from `operationId` (or is generated from the HTTP method and path). Tool descriptions come from the operation's `summary` or `description`.
 
-## Config Sources
+## Quick start
 
-OpenAPI can be loaded from:
-
-- local file
-- remote URL
-- remote probe list
-
-Default probe candidates:
-
-- `/openapi.json`
-- `/openapi.yaml`
-- `/swagger/v1/swagger.json`
-- `/v3/api-docs`
-
-## Remote Demos
-
-GitHub public reads:
+Run against GitHub's public API:
 
 ```bash
 API_SIDECAR_API_TOKEN=change-me \
 cargo run -p api-sidecar -- --config service/api-sidecar/examples/github-public.yaml
 ```
 
-NHTSA public vehicle data:
+Run against NHTSA's public vehicle data API:
 
 ```bash
 API_SIDECAR_API_TOKEN=change-me \
 cargo run -p api-sidecar -- --config service/api-sidecar/examples/nhtsa-public.yaml
 ```
 
-## Local Dev
-
-Run the local mock API:
+Local dev with the included mock API:
 
 ```bash
 cargo run -p api-sidecar --bin mock-api
-```
-
-Then run the sidecar against the mock API:
-
-```bash
 API_SIDECAR_API_TOKEN=change-me \
 cargo run -p api-sidecar -- --config service/api-sidecar/examples/local-dev.yaml
 ```
 
-## Supported v1 OpenAPI Subset
+## What it handles and what it skips
 
-Inputs:
+The sidecar deliberately supports a narrow subset of OpenAPI. The tradeoff: well-described JSON REST APIs work reliably out of the box, while exotic APIs need a custom MCP server.
 
-- path parameters
-- query parameters
-- allowlisted header parameters
+**Supported inputs:**
+- Path parameters
+- Query parameters
+- Allowlisted header parameters
 - JSON request bodies with object schemas
 
-Schema features:
+**Supported schema features:**
+- `type`, `properties`, `required`, `enum`
+- Nested objects and arrays
+- Local `$ref`
+- Simple object `allOf` merges
 
-- `type`
-- `properties`
-- `required`
-- `enum`
-- nested objects
-- nested arrays
-- local `$ref`
-- simple object `allOf` merges
+**Deliberately not supported (v1):**
+- Multipart uploads
+- Non-JSON request or response bodies
+- `oneOf`, `anyOf`
+- Arbitrary remote `$ref`
 
-Explicitly not supported in v1:
+Operations that use unsupported features are skipped at compile time with a warning in the `/health` diagnostics — they don't break the sidecar, they just don't become tools.
 
-- multipart uploads
-- non-JSON request bodies
-- non-JSON responses
-- `oneOf`
-- `anyOf`
-- arbitrary remote `$ref`
+## OpenAPI source discovery
+
+The sidecar can find an OpenAPI spec three ways:
+
+1. **File** — local path in config
+2. **URL** — direct URL to the spec document
+3. **Probe** — tries standard paths on the target service and uses the first valid OpenAPI 3.x document it finds
+
+Default probe paths:
+- `/openapi.json`
+- `/openapi.yaml`
+- `/swagger/v1/swagger.json`
+- `/v3/api-docs`
 
 ## Auth
 
-Outbound API auth is sidecar-managed.
+Outbound API auth is managed by the sidecar — users never pass credentials as tool arguments.
 
 Supported strategies:
-
-- bearer token
+- Bearer token
 - API key header
 - API key query parameter
 
-Secrets can come from inline config or environment variables.
+Secrets come from inline config or environment variables.
 
-## Notes
+## Reference
 
-- Arazzo may be configured, but workflow compilation is not implemented yet in the current code.
+### HTTP endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check with compile diagnostics |
+| `GET /tools` | List compiled tools |
+| `POST /tools/:name` | Call a tool |
+| `POST /reload` | Recompile tools from config atomically |
+
+### Notes
+
+- OpenAPI 3.x is required. Arazzo is optional (workflow compilation is not yet implemented).
 - Reload recompiles the active tool snapshot atomically from the config file.
+- If a reload fails, the sidecar keeps serving the last known good snapshot.
