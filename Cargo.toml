@@ -4,6 +4,7 @@ members = [
     "service/mcp-sidecar",
     "service/mcp-index",
     "service/pg-auth-gateway",
+    "service/api-sidecar",
 ]
 
 [workspace.package]

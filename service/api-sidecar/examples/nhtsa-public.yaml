@@ -1,0 +1,16 @@
+service:
+  name: nhtsa-public
+  port: 9152
+
+target:
+  base_url: https://nrd.api.nhtsa.dot.gov/nhtsa/vehicle
+  timeout_seconds: 30
+
+openapi:
+  source:
+    mode: url
+    url: https://nrd.api.nhtsa.dot.gov/nhtsa/vehicle/v3/api-docs
+
+compile:
+  include_tags:
+    - Vehicle Database Test Results

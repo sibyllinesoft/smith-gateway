@@ -1,0 +1,19 @@
+service:
+  name: github-public
+  port: 9151
+
+target:
+  base_url: https://api.github.com
+  timeout_seconds: 30
+
+openapi:
+  source:
+    mode: url
+    url: https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.json
+
+compile:
+  include_tags:
+    - repos
+    - issues
+  exclude_operations:
+    - issues/create

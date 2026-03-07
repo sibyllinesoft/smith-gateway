@@ -1,0 +1,19 @@
+service:
+  name: local-mock
+  port: 9153
+
+target:
+  base_url: http://127.0.0.1:9160
+  timeout_seconds: 10
+
+openapi:
+  source:
+    mode: probe
+    base_url: http://127.0.0.1:9160
+    candidates:
+      - /openapi.yaml
+
+compile:
+  include_tags:
+    - widgets
+    - echo
