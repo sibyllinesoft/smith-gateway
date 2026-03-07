@@ -79,7 +79,7 @@ Default probe paths:
 
 ## Auth
 
-Outbound API auth is managed by the sidecar — users never pass credentials as tool arguments.
+Outbound API auth is managed by the sidecar or broader platform layer — users never pass credentials as tool arguments.
 
 Supported strategies:
 - Bearer token
@@ -87,6 +87,8 @@ Supported strategies:
 - API key query parameter
 
 Secrets come from inline config or environment variables.
+
+This is about credential ownership, not forced runtime sharing. A deployment can still bind execution to verified user or session identity and have the sidecar resolve the correct credential context internally. The important boundary is that raw upstream secrets stay out of tool arguments.
 
 ## Reference
 

@@ -37,6 +37,18 @@ The injected identity looks like:
 
 This means the MCP server receives verified end-user context without the calling harness being able to forge it. The tool server can use this for audit logging, per-user scoping, or authorization decisions — and it doesn't have to trust the caller to be honest about who's making the request.
 
+## Runtime isolation
+
+Identity propagation and credential ownership are separate concerns.
+
+The sidecar should continue to own auth and secret injection, but stateful MCP deployments may still need isolation boundaries to avoid cross-user or cross-session contamination. The intended tenancy modes are:
+
+- `shared` — one MCP instance for all callers
+- `principal` — one MCP instance per verified principal or Smith user
+- `session` — one MCP instance per verified session
+
+That model lets the platform keep raw secrets out of tool arguments while still binding a stateful MCP runtime to the correct verified identity scope.
+
 ## Why a sidecar?
 
 The alternative would be embedding HTTP handling into every MCP server. That would mean every tool author needs to deal with HTTP routing, auth headers, health endpoints, and reload logic. The sidecar approach pushes all of that into one shared component:

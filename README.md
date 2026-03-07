@@ -105,7 +105,7 @@ go test ./...
 - [CLI](docs/cli.md)
 - [mcp-sidecar](service/mcp-sidecar/README.md)
 - [api-sidecar](service/api-sidecar/README.md)
-- [RFC 0001: API Sidecar](docs/api-sidecar.md)
+- [RFC 0001: API Sidecar](docs/rfcs/0001-api-sidecar.md)
 
 ## Docker
 
@@ -125,4 +125,4 @@ The gateway deliberately stays simple in a few ways:
 - **Sidecars are single-tool-server processes.** Each sidecar wraps exactly one MCP server or one OpenAPI spec. This means more processes to manage, but each one is stateless, independently deployable, and easy to reason about. The sidecar also consolidates functionality you'd need anyway in a service mesh deployment — health checks, auth token injection, reload, and a consistent HTTP contract — so the overhead is less "extra process" and more "purpose-built adapter that replaces generic infrastructure config."
 - **Catalog is a registry, not a proxy.** Catalog knows where tools are but doesn't sit in the request path for tool calls — the CLI calls sidecars directly (via catalog-provided URLs). This keeps catalog simple and avoids making it a throughput bottleneck.
 - **API sidecar supports a narrow OpenAPI subset.** It handles JSON-over-HTTP with path/query/header params and common schema features. It deliberately skips multipart uploads, non-JSON bodies, streaming, and complex polymorphism (`oneOf`/`anyOf`). The tradeoff is that a well-described REST API works reliably out of the box, while exotic APIs need a custom MCP server.
-- **Auth is sidecar-managed, not user-delegated.** Sidecars hold API credentials and inject them on outbound requests. Users never pass raw credentials as tool arguments. This is simpler and safer for v1, but means OAuth login flows and per-user token delegation aren't supported yet.
+- **Auth is platform-managed and can still be identity-bound.** Sidecars should own credential storage and injection, so users never pass raw credentials as tool arguments. That does not require shared runtime state: sidecars can still bind upstream instances or credential contexts to a verified principal or session to avoid cross-user pollution in stateful MCPs. Shared, principal-scoped, and session-scoped tenancy are runtime choices; raw secret handling remains platform-managed.

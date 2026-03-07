@@ -18,7 +18,7 @@ This RFC intentionally defines a narrow golden path:
 - OpenAPI 3.x is mandatory
 - Arazzo is optional
 - HTTP+JSON APIs only
-- sidecar-managed auth only
+- platform-managed auth only
 - one OpenAPI operation maps to one tool
 
 ## Motivation
@@ -43,7 +43,7 @@ The goal is not to build a universal API gateway. The goal is to provide a robus
 - Act as a generic reverse proxy.
 - Support arbitrary content types in v1.
 - Support multipart uploads, streaming, SSE, websockets, SOAP, or gRPC in v1.
-- Implement user-delegated OAuth login flows in v1.
+- Implement raw user-secret passing or caller-supplied credential flows in v1.
 - Replace Envoy or a policy gateway.
 
 ## Service Responsibilities
@@ -294,7 +294,7 @@ If the upstream response is not JSON, the call fails in v1.
 
 ## Authentication
 
-Authentication is sidecar-managed. Users should not pass credentials as tool inputs.
+Authentication is platform-managed. Users should not pass credentials as tool inputs.
 
 Supported v1 strategies:
 
@@ -306,9 +306,11 @@ Future candidates:
 
 - OAuth client credentials
 - mTLS
-- delegated user identity propagation
+- delegated identity-bound credential lookup
 
 OpenAPI security schemes may inform validation and warnings, but the sidecar config remains authoritative for execution.
+
+Credential ownership and runtime isolation are separate concerns. A sidecar or adjacent control plane may still bind credential material or upstream runtime selection to a verified principal or session without exposing raw credentials as tool arguments.
 
 ## Arazzo Integration
 
