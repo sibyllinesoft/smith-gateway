@@ -2,7 +2,7 @@
 
 `api-sidecar` exposes OpenAPI-described HTTP APIs through the same shim contract used by `mcp-sidecar`.
 
-It is designed for remote upstreams first: point it at a remote OpenAPI document or a remote service that exposes one at a standard path, and the sidecar compiles operations into tools that `mcp-index` can ingest.
+It is designed for remote upstreams first: point it at a remote OpenAPI document or a remote service that exposes one at a standard path, and the sidecar compiles operations into tools that `catalog` can ingest.
 
 ## Golden Path
 

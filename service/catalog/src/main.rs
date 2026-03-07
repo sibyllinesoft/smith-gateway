@@ -19,74 +19,70 @@ use poller::{parse_upstreams, spawn_poller, IndexState};
 
 #[derive(Parser)]
 #[command(
-    name = "mcp-index",
+    name = "catalog",
     about = "MCP server registry — polls shims, serves unified tool index"
 )]
 struct Cli {
     /// HTTP listen port
-    #[arg(long, default_value = "9200", env = "MCP_INDEX_PORT")]
+    #[arg(long, default_value = "9200", env = "CATALOG_PORT")]
     port: u16,
 
     /// Upstream MCP shim instances: name=url,name=url
-    #[arg(long, env = "MCP_INDEX_UPSTREAMS")]
+    #[arg(long, env = "CATALOG_UPSTREAMS")]
     upstreams: String,
 
     /// Poll interval in seconds
-    #[arg(long, default_value = "30", env = "MCP_INDEX_POLL_INTERVAL")]
+    #[arg(long, default_value = "30", env = "CATALOG_POLL_INTERVAL")]
     poll_interval: u64,
 
     /// Directory for OAuth credential files (shared with MCP servers)
-    #[arg(
-        long,
-        default_value = "/credentials",
-        env = "MCP_INDEX_CREDENTIALS_DIR"
-    )]
+    #[arg(long, default_value = "/credentials", env = "CATALOG_CREDENTIALS_DIR")]
     credentials_dir: PathBuf,
 
     /// Base URL for OAuth redirect URIs
     #[arg(
         long,
         default_value = "http://localhost:9200",
-        env = "MCP_INDEX_BASE_URL"
+        env = "CATALOG_BASE_URL"
     )]
     base_url: String,
 
-    /// Optional API token for protecting index APIs (Authorization: Bearer <token>)
-    #[arg(long, env = "MCP_INDEX_API_TOKEN")]
+    /// Optional API token for protecting catalog APIs (Authorization: Bearer <token>)
+    #[arg(long, env = "CATALOG_API_TOKEN")]
     api_token: Option<String>,
 
-    /// API token used by mcp-index when calling upstream mcp-sidecar instances
-    #[arg(long, env = "MCP_INDEX_UPSTREAM_API_TOKEN")]
+    /// API token used by catalog when calling upstream sidecar instances
+    #[arg(long, env = "CATALOG_UPSTREAM_API_TOKEN")]
     upstream_api_token: Option<String>,
 
     /// Allow unauthenticated public API access (development only)
-    #[arg(long, env = "MCP_INDEX_ALLOW_UNAUTHENTICATED", default_value_t = false)]
+    #[arg(long, env = "CATALOG_ALLOW_UNAUTHENTICATED", default_value_t = false)]
     allow_unauthenticated: bool,
 
     /// Secret used to verify daemon-issued x-oc-identity-token JWTs.
-    #[arg(long, env = "MCP_INDEX_IDENTITY_SECRET")]
+    #[arg(long, env = "CATALOG_IDENTITY_SECRET")]
     identity_secret: Option<String>,
 
     /// OPA endpoint for tool authorization decisions.
     #[arg(
         long,
-        env = "MCP_INDEX_OPA_URL",
+        env = "CATALOG_OPA_URL",
         default_value = "http://opa-management:8181"
     )]
     opa_url: String,
 
     /// Max concurrent OPA checks when filtering discovery results.
-    #[arg(long, env = "MCP_INDEX_AUTHZ_CONCURRENCY", default_value_t = 32)]
+    #[arg(long, env = "CATALOG_AUTHZ_CONCURRENCY", default_value_t = 32)]
     authz_concurrency: usize,
 
     /// TTL in seconds for cached discovery authorization decisions.
-    #[arg(long, env = "MCP_INDEX_AUTHZ_CACHE_TTL_SECONDS", default_value_t = 30)]
+    #[arg(long, env = "CATALOG_AUTHZ_CACHE_TTL_SECONDS", default_value_t = 30)]
     authz_cache_ttl_seconds: u64,
 
     /// Max cached discovery authorization decisions kept in memory.
     #[arg(
         long,
-        env = "MCP_INDEX_AUTHZ_CACHE_MAX_ENTRIES",
+        env = "CATALOG_AUTHZ_CACHE_MAX_ENTRIES",
         default_value_t = 10_000
     )]
     authz_cache_max_entries: usize,
@@ -96,7 +92,7 @@ struct Cli {
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("mcp_index=info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("catalog=info")),
         )
         .init();
 
@@ -104,7 +100,7 @@ async fn main() -> Result<()> {
 
     let upstreams = parse_upstreams(&cli.upstreams);
     if upstreams.is_empty() {
-        bail!("no upstreams provided — set --upstreams or MCP_INDEX_UPSTREAMS");
+        bail!("no upstreams provided — set --upstreams or CATALOG_UPSTREAMS");
     }
 
     // Build OAuth providers from environment
@@ -126,12 +122,10 @@ async fn main() -> Result<()> {
         .map(|v| v.into_bytes());
 
     if api_token.is_none() && !cli.allow_unauthenticated {
-        bail!("MCP_INDEX_API_TOKEN is required unless MCP_INDEX_ALLOW_UNAUTHENTICATED=true");
+        bail!("CATALOG_API_TOKEN is required unless CATALOG_ALLOW_UNAUTHENTICATED=true");
     }
     if api_token.is_none() {
-        tracing::warn!(
-            "mcp-index is running without API auth; set MCP_INDEX_API_TOKEN to secure APIs"
-        );
+        tracing::warn!("catalog is running without API auth; set CATALOG_API_TOKEN to secure APIs");
     }
 
     tracing::info!(
@@ -146,7 +140,7 @@ async fn main() -> Result<()> {
         authz_cache_ttl_seconds = cli.authz_cache_ttl_seconds,
         authz_cache_max_entries = cli.authz_cache_max_entries,
         allow_unauthenticated = cli.allow_unauthenticated,
-        "starting mcp-index"
+        "starting catalog"
     );
 
     let client = reqwest::Client::builder()

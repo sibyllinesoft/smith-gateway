@@ -6,7 +6,7 @@ Status: Proposed
 
 Add a new `api-sidecar` service that exposes non-MCP HTTP APIs through the same shim contract used by `mcp-sidecar`.
 
-The service compiles OpenAPI 3.x operations into tools and optionally compiles Arazzo workflows into higher-level tools. From the perspective of `mcp-index`, an API sidecar is just another upstream exposing:
+The service compiles OpenAPI 3.x operations into tools and optionally compiles Arazzo workflows into higher-level tools. From the perspective of `catalog`, an API sidecar is just another upstream exposing:
 
 - `GET /health`
 - `GET /tools`
@@ -30,7 +30,7 @@ The goal is not to build a universal API gateway. The goal is to provide a robus
 ## Goals
 
 - Let teams sidecar existing HTTP APIs into the Smith catalog without implementing MCP.
-- Keep the `mcp-index` integration unchanged by matching the existing shim HTTP contract.
+- Keep the `catalog` integration unchanged by matching the existing shim HTTP contract.
 - Produce stable, predictable tool definitions from OpenAPI.
 - Keep business arguments visible as tool inputs while hiding transport and auth concerns in sidecar config.
 - Support optional Arazzo workflows for curated multi-step operations.
@@ -57,11 +57,11 @@ It has four responsibilities:
 3. Compile operations and workflows into tool definitions.
 4. Execute tool calls against the target HTTP API.
 
-It does not own catalog aggregation, search, or cross-service authorization policy. Those remain in `mcp-index`.
+It does not own catalog aggregation, search, or cross-service authorization policy. Those remain in `catalog`.
 
 ## External Contract
 
-The sidecar must match the existing shim shape already consumed by `mcp-index`.
+The sidecar must match the existing shim shape already consumed by `catalog`.
 
 ### `GET /health`
 

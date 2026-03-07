@@ -1,6 +1,6 @@
 // Package smithcli implements the dynamic Smith CLI.
 //
-// The CLI loads its command tree from `mcp-index` at startup and maps each
+// The CLI loads its command tree from `catalog` at startup and maps each
 // server/tool pair into Cobra commands:
 //
 //	smith catalog list

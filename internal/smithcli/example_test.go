@@ -13,7 +13,7 @@ import (
 
 func ExampleBootstrapConfig() {
 	cfg, err := BootstrapConfig([]string{
-		"--index-url", "http://catalog.internal",
+		"--catalog-url", "http://catalog.internal",
 		"--authorized-only=false",
 		"--output", "raw",
 	})

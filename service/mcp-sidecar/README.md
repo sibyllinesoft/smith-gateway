@@ -1,6 +1,6 @@
 # mcp-sidecar
 
-`mcp-sidecar` bridges a stdio MCP server to a small HTTP shim that `mcp-index` can poll and call.
+`mcp-sidecar` bridges a stdio MCP server to a small HTTP shim that `catalog` can poll and call.
 
 ## HTTP Surface
 
@@ -11,7 +11,7 @@
 - `GET /resources/*uri`
 - `POST /reload`
 
-This is the contract `mcp-index` already understands, so each sidecar instance can be registered as an upstream without additional translation.
+This is the contract `catalog` already understands, so each sidecar instance can be registered as an upstream without additional translation.
 
 ## Typical Usage
 

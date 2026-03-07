@@ -4,9 +4,9 @@ Tool-facing MCP services extracted from `smith-core`:
 
 - `mcp-sidecar`: stdio MCP server -> HTTP shim
 - `api-sidecar`: OpenAPI-described HTTP API -> HTTP shim
-- `mcp-index`: unified MCP tool catalog and gateway
+- `catalog`: unified MCP tool catalog and gateway
 - `pg-auth-gateway`: Postgres wire proxy that validates Smith identity tokens and binds hardened RLS context
-- `smith`: Cobra-based CLI that loads commands dynamically from `mcp-index`
+- `smith`: Cobra-based CLI that loads commands dynamically from `catalog`
 
 `mcp-sidecar` can also verify `x-oc-identity-token` and inject a reserved `_smith_identity` argument into stdio MCP tool calls. That lets stdio tool servers bind verified end-user context server-side instead of trusting the harness.
 
@@ -59,7 +59,7 @@ cargo run -p api-sidecar -- --config service/api-sidecar/examples/local-dev.yaml
 Run index:
 
 ```bash
-MCP_INDEX_UPSTREAMS=fs=http://localhost:9100 cargo run -p mcp-index
+CATALOG_UPSTREAMS=fs=http://localhost:9100 cargo run -p catalog
 ```
 
 Run the Postgres auth gateway:
@@ -74,17 +74,17 @@ cargo run -p pg-auth-gateway
 Run CLI:
 
 ```bash
-go run ./cmd/smith --index-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" catalog list
-go run ./cmd/smith --index-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" fs read_file --path /tmp/demo.txt
+go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" catalog list
+go run ./cmd/smith --catalog-url http://localhost:9200 --identity-token "$IDENTITY_TOKEN" fs read_file --path /tmp/demo.txt
 ```
 
-The CLI fetches `/api/tools?authorized=true` by default, so `mcp-index` can return only the tools allowed for the supplied identity token. Use `--authorized-only=false` if you want the raw catalog instead.
+The CLI fetches `/api/tools?authorized=true` by default, so `catalog` can return only the tools allowed for the supplied identity token. Use `--authorized-only=false` if you want the raw catalog instead.
 
-For larger catalogs, tune `mcp-index` discovery authorization with:
+For larger catalogs, tune `catalog` discovery authorization with:
 
-- `MCP_INDEX_AUTHZ_CONCURRENCY` (default `32`) for bounded parallel OPA checks
-- `MCP_INDEX_AUTHZ_CACHE_TTL_SECONDS` (default `30`) for discovery decision reuse
-- `MCP_INDEX_AUTHZ_CACHE_MAX_ENTRIES` (default `10000`) to bound cache memory
+- `CATALOG_AUTHZ_CONCURRENCY` (default `32`) for bounded parallel OPA checks
+- `CATALOG_AUTHZ_CACHE_TTL_SECONDS` (default `30`) for discovery decision reuse
+- `CATALOG_AUTHZ_CACHE_MAX_ENTRIES` (default `10000`) to bound cache memory
 
 ## Docker
 
@@ -93,6 +93,6 @@ Build images from this repo root:
 ```bash
 docker build -f service/mcp-sidecar/Dockerfile -t mcp-sidecar:local .
 docker build -f service/api-sidecar/Dockerfile -t api-sidecar:local .
-docker build -f service/mcp-index/Dockerfile -t mcp-index:local .
+docker build -f service/catalog/Dockerfile -t catalog:local .
 docker build -f service/pg-auth-gateway/Dockerfile -t pg-auth-gateway:local .
 ```

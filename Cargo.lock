@@ -358,6 +358,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
+name = "catalog"
+version = "0.2.5"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "jsonwebtoken",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tantivy",
+ "tokio",
+ "tower-http 0.5.2",
+ "tracing",
+ "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1372,26 +1392,6 @@ name = "matchit"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
-
-[[package]]
-name = "mcp-index"
-version = "0.2.5"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "jsonwebtoken",
- "reqwest",
- "serde",
- "serde_json",
- "tantivy",
- "tokio",
- "tower-http 0.5.2",
- "tracing",
- "tracing-subscriber",
- "urlencoding",
- "uuid",
-]
 
 [[package]]
 name = "mcp-sidecar"

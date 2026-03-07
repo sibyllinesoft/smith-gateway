@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	defaultIndexURL = "http://localhost:9200"
-	defaultTimeout  = 30 * time.Second
+	defaultCatalogURL = "http://localhost:9200"
+	defaultTimeout    = 30 * time.Second
 )
 
 type Config struct {
@@ -68,9 +68,9 @@ type apiError struct {
 
 func (e *apiError) Error() string {
 	if e.Body == "" {
-		return fmt.Sprintf("index API returned HTTP %d", e.Status)
+		return fmt.Sprintf("catalog API returned HTTP %d", e.Status)
 	}
-	return fmt.Sprintf("index API returned HTTP %d: %s", e.Status, e.Body)
+	return fmt.Sprintf("catalog API returned HTTP %d: %s", e.Status, e.Body)
 }
 
 type argumentValue interface {
@@ -196,7 +196,7 @@ func (v *jsonValue) Value() any   { return v.value }
 
 func BootstrapConfig(args []string) (Config, error) {
 	cfg := Config{
-		BaseURL:           envOrDefault("SMITH_INDEX_URL", defaultIndexURL),
+		BaseURL:           firstEnvOrDefault([]string{"SMITH_CATALOG_URL", "SMITH_INDEX_URL"}, defaultCatalogURL),
 		APIToken:          strings.TrimSpace(os.Getenv("SMITH_API_TOKEN")),
 		IdentityToken:     strings.TrimSpace(os.Getenv("SMITH_IDENTITY_TOKEN")),
 		IdentityTokenFile: strings.TrimSpace(os.Getenv("SMITH_IDENTITY_TOKEN_FILE")),
@@ -208,8 +208,9 @@ func BootstrapConfig(args []string) (Config, error) {
 	fs := pflag.NewFlagSet("smith-bootstrap", pflag.ContinueOnError)
 	fs.ParseErrorsWhitelist.UnknownFlags = true
 	fs.SetInterspersed(true)
-	fs.StringVar(&cfg.BaseURL, "index-url", cfg.BaseURL, "mcp-index base URL")
-	fs.StringVar(&cfg.APIToken, "api-token", cfg.APIToken, "index API token")
+	fs.StringVar(&cfg.BaseURL, "catalog-url", cfg.BaseURL, "catalog base URL")
+	fs.StringVar(&cfg.BaseURL, "index-url", cfg.BaseURL, "catalog base URL (deprecated alias)")
+	fs.StringVar(&cfg.APIToken, "api-token", cfg.APIToken, "catalog API token")
 	fs.StringVar(&cfg.IdentityToken, "identity-token", cfg.IdentityToken, "signed identity token")
 	fs.StringVar(&cfg.IdentityTokenFile, "identity-token-file", cfg.IdentityTokenFile, "path to a signed identity token")
 	fs.BoolVar(&cfg.AuthorizedOnly, "authorized-only", cfg.AuthorizedOnly, "only load tools allowed for the current identity")
@@ -235,7 +236,7 @@ func BuildRootCmd(ctx context.Context, cfg *Config) (*cobra.Command, error) {
 	root := &cobra.Command{
 		Use:           "smith",
 		Short:         "Dynamic CLI for the smith MCP tool catalog",
-		Long:          "Smith loads the tool catalog from mcp-index at startup and exposes each server/tool pair as Cobra commands.",
+		Long:          "Smith loads the tool catalog from catalog at startup and exposes each server/tool pair as Cobra commands.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -432,7 +433,7 @@ func newCatalogCmd(tools []Tool) *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
-		Short: "List the tools loaded from mcp-index",
+		Short: "List the tools loaded from catalog",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 2, 2, 2, ' ', 0)
 			for _, tool := range tools {
@@ -452,8 +453,9 @@ func newCatalogCmd(tools []Tool) *cobra.Command {
 }
 
 func bindGlobalFlags(fs *pflag.FlagSet, cfg *Config) {
-	fs.StringVar(&cfg.BaseURL, "index-url", cfg.BaseURL, "mcp-index base URL")
-	fs.StringVar(&cfg.APIToken, "api-token", cfg.APIToken, "index API token")
+	fs.StringVar(&cfg.BaseURL, "catalog-url", cfg.BaseURL, "catalog base URL")
+	fs.StringVar(&cfg.BaseURL, "index-url", cfg.BaseURL, "catalog base URL (deprecated alias)")
+	fs.StringVar(&cfg.APIToken, "api-token", cfg.APIToken, "catalog API token")
 	fs.StringVar(&cfg.IdentityToken, "identity-token", cfg.IdentityToken, "signed identity token")
 	fs.StringVar(&cfg.IdentityTokenFile, "identity-token-file", cfg.IdentityTokenFile, "path to a signed identity token")
 	fs.BoolVar(&cfg.AuthorizedOnly, "authorized-only", cfg.AuthorizedOnly, "only load tools allowed for the current identity")
@@ -464,7 +466,7 @@ func bindGlobalFlags(fs *pflag.FlagSet, cfg *Config) {
 func finalizeConfig(cfg *Config) error {
 	cfg.BaseURL = strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = defaultIndexURL
+		cfg.BaseURL = defaultCatalogURL
 	}
 
 	cfg.Output = strings.ToLower(strings.TrimSpace(cfg.Output))
@@ -648,6 +650,15 @@ func envOrDefault(name, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func firstEnvOrDefault(names []string, fallback string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+			return value
+		}
+	}
+	return fallback
 }
 
 func envBoolOrDefault(name string, fallback bool) bool {

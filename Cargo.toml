@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "service/mcp-sidecar",
-    "service/mcp-index",
+    "service/catalog",
     "service/pg-auth-gateway",
     "service/api-sidecar",
 ]
