@@ -45,7 +45,7 @@ The alternative would be embedding HTTP handling into every MCP server. That wou
 - The gateway gets a consistent HTTP contract across all tools
 - Auth, middleware, and lifecycle management happen in one place
 
-The tradeoff is an extra process per tool server and one more hop in the call path. In practice this is negligible — the sidecar is lightweight and the stdio communication is fast.
+The sidecar also consolidates functionality you'd need anyway in a service mesh deployment — health checks, identity propagation, auth token injection, and reload. Rather than configuring that per-service in Envoy or similar infrastructure, the sidecar handles it with tool-aware semantics built in.
 
 ## Reference
 
