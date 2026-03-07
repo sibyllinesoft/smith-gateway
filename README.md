@@ -105,7 +105,6 @@ go test ./...
 - [CLI](docs/cli.md)
 - [mcp-sidecar](service/mcp-sidecar/README.md)
 - [api-sidecar](service/api-sidecar/README.md)
-- [RFC 0001: API Sidecar](docs/rfcs/0001-api-sidecar.md)
 
 ## Docker
 
