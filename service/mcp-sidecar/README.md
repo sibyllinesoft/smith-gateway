@@ -41,11 +41,13 @@ This means the MCP server receives verified end-user context without the calling
 
 Identity propagation and credential ownership are separate concerns.
 
-The sidecar should continue to own auth and secret injection, but stateful MCP deployments may still need isolation boundaries to avoid cross-user or cross-session contamination. The intended tenancy modes are:
+The sidecar continues to own auth and secret injection, but stateful MCP deployments may still need isolation boundaries to avoid cross-user or cross-session contamination. Tenancy is configurable with `MCP_SIDECAR_TENANCY`:
 
 - `shared` — one MCP instance for all callers
 - `principal` — one MCP instance per verified principal or Smith user
 - `session` — one MCP instance per verified session
+
+When tenancy is `principal` or `session`, `MCP_SIDECAR_IDENTITY_SECRET` is required so the sidecar can verify `x-oc-identity-token` and derive the correct isolation key. The sidecar keeps a bounded tenant pool controlled by `MCP_SIDECAR_MAX_TENANT_CLIENTS`, lazily spawns scoped MCP instances on first use, and clears them on `POST /reload`.
 
 That model lets the platform keep raw secrets out of tool arguments while still binding a stateful MCP runtime to the correct verified identity scope.
 
@@ -86,6 +88,8 @@ Configure with:
 | `MCP_SIDECAR_API_TOKEN` | Required token for API access |
 | `MCP_SIDECAR_ALLOW_UNAUTHENTICATED` | Allow unauthenticated access |
 | `MCP_SIDECAR_IDENTITY_SECRET` | Secret for verifying identity tokens |
+| `MCP_SIDECAR_TENANCY` | MCP runtime isolation mode: `shared`, `principal`, or `session` |
+| `MCP_SIDECAR_MAX_TENANT_CLIENTS` | Maximum isolated MCP instances kept in the tenant pool |
 
 ### Middleware
 

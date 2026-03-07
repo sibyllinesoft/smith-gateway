@@ -10,10 +10,10 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::time::timeout;
 
-use crate::mcp_client::McpClient;
 use crate::middleware::config::MiddlewareConfig;
 use crate::middleware::filter::{evaluate_filters, FilterResult};
 use crate::middleware::transform::{apply_input_transforms, apply_output_transforms};
+use crate::tenancy::{CallClientError, IdentityContext};
 use crate::AppState;
 
 type SharedState = Arc<AppState>;
@@ -28,6 +28,16 @@ struct IdentityTokenClaims {
     #[serde(default)]
     smith_user_id: Option<String>,
     smith_user_role: String,
+}
+
+impl IdentityTokenClaims {
+    fn tenancy_identity(&self) -> IdentityContext {
+        IdentityContext {
+            principal: self.principal.clone(),
+            session: self.session.clone(),
+            smith_user_id: self.smith_user_id.clone(),
+        }
+    }
 }
 
 fn extract_token(headers: &HeaderMap) -> Option<String> {
@@ -134,11 +144,13 @@ async fn health(
 ) -> Result<Json<Value>, AppError> {
     require_api_token(&state, &headers)?;
 
-    let client = state.client.read().await;
+    let client = state.clients.discovery_client().await;
     Ok(Json(json!({
         "status": "ok",
         "server_info": client.server_info,
         "tools_count": client.tools.len(),
+        "tenant_mode": state.clients.mode().as_str(),
+        "active_tenant_clients": state.clients.active_tenant_clients().await,
     })))
 }
 
@@ -148,7 +160,7 @@ async fn list_tools(
 ) -> Result<Json<Value>, AppError> {
     require_api_token(&state, &headers)?;
 
-    let client = state.client.read().await;
+    let client = state.clients.discovery_client().await;
     let mw = state.middleware.read().await;
 
     let tools: Vec<_> = match mw.as_ref() {
@@ -171,11 +183,11 @@ async fn call_tool(
 ) -> Result<Json<Value>, AppError> {
     require_api_token(&state, &headers)?;
     let identity = verify_identity_token(&state, &headers)?;
-
-    let client = state.client.read().await;
+    let client = resolve_call_client(&state, identity.as_ref()).await?;
+    let discovery_client = state.clients.discovery_client().await;
 
     // Check if tool exists
-    if !client.tools.iter().any(|t| t.name == name) {
+    if !discovery_client.tools.iter().any(|t| t.name == name) {
         return Err(AppError::NotFound(format!("tool not found: {name}")));
     }
 
@@ -270,8 +282,9 @@ async fn list_resources(
     headers: HeaderMap,
 ) -> Result<Json<Value>, AppError> {
     require_api_token(&state, &headers)?;
+    let identity = verify_identity_token(&state, &headers)?;
 
-    let client = state.client.read().await;
+    let client = resolve_call_client(&state, identity.as_ref()).await?;
     match client.list_resources().await {
         Ok(resources) => Ok(Json(json!(resources))),
         Err(e) => Err(AppError::McpServerError(e.to_string())),
@@ -284,8 +297,9 @@ async fn read_resource(
     Path(uri): Path<String>,
 ) -> Result<Json<Value>, AppError> {
     require_api_token(&state, &headers)?;
+    let identity = verify_identity_token(&state, &headers)?;
 
-    let client = state.client.read().await;
+    let client = resolve_call_client(&state, identity.as_ref()).await?;
     match client.read_resource(&uri).await {
         Ok(content) => Ok(Json(content)),
         Err(e) => Err(AppError::McpServerError(e.to_string())),
@@ -302,21 +316,11 @@ async fn reload(
 
     tracing::info!("reload requested — shutting down current MCP server");
 
-    // Shut down the old client
-    {
-        let old_client = state.client.read().await;
-        old_client.shutdown().await;
-    }
-
-    // Spawn a new client from the stored config
-    let new_client = McpClient::spawn_from_config(&state.config)
+    let tools_count = state
+        .clients
+        .reload()
         .await
         .map_err(|e| AppError::McpServerError(format!("reload failed: {e}")))?;
-
-    let tools_count = new_client.tools.len();
-
-    // Replace the client
-    *state.client.write().await = new_client;
 
     // Reload middleware config if path is configured
     if let Some(ref path) = state.middleware_path {
@@ -346,6 +350,7 @@ enum AppError {
     ToolError(String),
     Filtered(String),
     TransformError(String),
+    Unavailable(String),
     McpServerError(String),
 }
 
@@ -357,10 +362,29 @@ impl IntoResponse for AppError {
             Self::ToolError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
             Self::Filtered(msg) => (StatusCode::FORBIDDEN, msg),
             Self::TransformError(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
+            Self::Unavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
             Self::McpServerError(msg) => (StatusCode::BAD_GATEWAY, msg),
         };
 
         let body = json!({ "error": message });
         (status, Json(body)).into_response()
     }
+}
+
+async fn resolve_call_client(
+    state: &SharedState,
+    identity: Option<&IdentityTokenClaims>,
+) -> Result<Arc<crate::mcp_client::McpClient>, AppError> {
+    let tenancy_identity = identity.map(IdentityTokenClaims::tenancy_identity);
+    state
+        .clients
+        .call_client(tenancy_identity.as_ref())
+        .await
+        .map_err(|err| match err {
+            CallClientError::MissingIdentity(_) | CallClientError::MissingSession => {
+                AppError::Unauthorized(err.to_string())
+            }
+            CallClientError::Capacity { .. } => AppError::Unavailable(err.to_string()),
+            CallClientError::Spawn(_) => AppError::McpServerError(err.to_string()),
+        })
 }

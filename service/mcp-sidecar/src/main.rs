@@ -1,6 +1,7 @@
 mod http;
 mod mcp_client;
 mod middleware;
+mod tenancy;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -14,6 +15,7 @@ use tracing_subscriber::EnvFilter;
 
 use mcp_client::SpawnConfig;
 use middleware::MiddlewareConfig;
+use tenancy::{ClientPool, TenantMode};
 
 #[derive(Parser)]
 #[command(
@@ -58,14 +60,21 @@ struct Cli {
     #[arg(long, env = "MCP_SIDECAR_IDENTITY_SECRET")]
     identity_secret: Option<String>,
 
+    /// Runtime isolation mode for MCP instances.
+    #[arg(long, env = "MCP_SIDECAR_TENANCY", value_enum, default_value_t = TenantMode::Shared)]
+    tenancy: TenantMode,
+
+    /// Maximum isolated MCP instances to keep in the tenant pool.
+    #[arg(long, env = "MCP_SIDECAR_MAX_TENANT_CLIENTS", default_value_t = 128)]
+    max_tenant_clients: usize,
+
     /// The MCP server command and arguments (everything after --)
     #[arg(trailing_var_arg = true, required = true)]
     command: Vec<String>,
 }
 
 pub struct AppState {
-    pub client: RwLock<Arc<mcp_client::McpClient>>,
-    pub config: SpawnConfig,
+    pub clients: ClientPool,
     pub middleware: RwLock<Option<Arc<MiddlewareConfig>>>,
     pub middleware_path: Option<PathBuf>,
     pub api_token: Option<String>,
@@ -108,6 +117,12 @@ async fn main() -> Result<()> {
             "mcp-sidecar is running without API auth; set MCP_SIDECAR_API_TOKEN to secure APIs"
         );
     }
+    if cli.tenancy != TenantMode::Shared && identity_secret.is_none() {
+        bail!(
+            "MCP_SIDECAR_IDENTITY_SECRET is required when MCP_SIDECAR_TENANCY is set to {}",
+            cli.tenancy.as_str()
+        );
+    }
 
     // Load middleware config if provided
     let mw = match &cli.middleware {
@@ -126,7 +141,7 @@ async fn main() -> Result<()> {
     };
 
     // Spawn the MCP server and perform handshake
-    let client = mcp_client::McpClient::spawn_from_config(&spawn_config)
+    let discovery_client = mcp_client::McpClient::spawn_from_config(&spawn_config)
         .await
         .context("failed to start MCP server")?;
 
@@ -137,8 +152,12 @@ async fn main() -> Result<()> {
     };
 
     let state = Arc::new(AppState {
-        client: RwLock::new(client),
-        config: spawn_config,
+        clients: ClientPool::new(
+            discovery_client,
+            spawn_config.clone(),
+            cli.tenancy,
+            cli.max_tenant_clients,
+        ),
         middleware: RwLock::new(mw),
         middleware_path: cli.middleware,
         api_token,
