@@ -47,7 +47,7 @@ The sidecar continues to own auth and secret injection, but stateful MCP deploym
 - `principal` — one MCP instance per verified principal or Smith user
 - `session` — one MCP instance per verified session
 
-When tenancy is `principal` or `session`, `MCP_SIDECAR_IDENTITY_SECRET` is required so the sidecar can verify `x-oc-identity-token` and derive the correct isolation key. The sidecar keeps a bounded tenant pool controlled by `MCP_SIDECAR_MAX_TENANT_CLIENTS`, lazily spawns scoped MCP instances on first use, and clears them on `POST /reload`.
+When tenancy is `principal` or `session`, `MCP_SIDECAR_IDENTITY_SECRET` is required so the sidecar can verify `x-oc-identity-token` and derive the correct isolation key. The sidecar keeps a bounded tenant pool controlled by `MCP_SIDECAR_MAX_TENANT_CLIENTS`, lazily spawns scoped MCP instances on first use, evicts them after `MCP_SIDECAR_TENANT_IDLE_TTL_SECONDS` of inactivity, and clears the remaining pool on `POST /reload`.
 
 That model lets the platform keep raw secrets out of tool arguments while still binding a stateful MCP runtime to the correct verified identity scope.
 
@@ -90,6 +90,7 @@ Configure with:
 | `MCP_SIDECAR_IDENTITY_SECRET` | Secret for verifying identity tokens |
 | `MCP_SIDECAR_TENANCY` | MCP runtime isolation mode: `shared`, `principal`, or `session` |
 | `MCP_SIDECAR_MAX_TENANT_CLIENTS` | Maximum isolated MCP instances kept in the tenant pool |
+| `MCP_SIDECAR_TENANT_IDLE_TTL_SECONDS` | Idle eviction TTL for tenant-scoped MCP instances (`0` disables eviction) |
 
 ### Middleware
 

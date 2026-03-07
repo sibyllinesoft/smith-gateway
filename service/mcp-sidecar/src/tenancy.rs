@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::ValueEnum;
@@ -63,10 +64,16 @@ impl std::error::Error for CallClientError {
 
 pub struct ClientPool {
     discovery: RwLock<Arc<McpClient>>,
-    tenants: Mutex<HashMap<String, Arc<McpClient>>>,
+    tenants: Mutex<HashMap<String, TenantEntry>>,
     config: SpawnConfig,
     mode: TenantMode,
     max_tenant_clients: usize,
+    idle_ttl: Option<Duration>,
+}
+
+struct TenantEntry {
+    client: Arc<McpClient>,
+    last_used_at: Instant,
 }
 
 impl ClientPool {
@@ -75,6 +82,7 @@ impl ClientPool {
         config: SpawnConfig,
         mode: TenantMode,
         max_tenant_clients: usize,
+        idle_ttl: Option<Duration>,
     ) -> Self {
         Self {
             discovery: RwLock::new(discovery),
@@ -82,6 +90,7 @@ impl ClientPool {
             config,
             mode,
             max_tenant_clients: max_tenant_clients.max(1),
+            idle_ttl,
         }
     }
 
@@ -94,6 +103,7 @@ impl ClientPool {
     }
 
     pub async fn active_tenant_clients(&self) -> usize {
+        self.prune_idle_clients().await;
         self.tenants.lock().await.len()
     }
 
@@ -105,16 +115,26 @@ impl ClientPool {
             return Ok(self.discovery_client().await);
         };
 
+        let now = Instant::now();
+        let mut expired_clients = Vec::new();
         let mut tenants = self.tenants.lock().await;
-        if let Some(client) = tenants.get(&key) {
-            return Ok(client.clone());
+        prune_idle_entries(&mut tenants, self.idle_ttl, now, &mut expired_clients);
+        if let Some(entry) = tenants.get_mut(&key) {
+            entry.last_used_at = now;
+            let client = entry.client.clone();
+            drop(tenants);
+            shutdown_clients(expired_clients).await;
+            return Ok(client);
         }
 
         if tenants.len() >= self.max_tenant_clients {
-            return Err(CallClientError::Capacity {
+            let error = CallClientError::Capacity {
                 limit: self.max_tenant_clients,
                 mode: self.mode,
-            });
+            };
+            drop(tenants);
+            shutdown_clients(expired_clients).await;
+            return Err(error);
         }
 
         tracing::info!(
@@ -126,7 +146,15 @@ impl ClientPool {
             .await
             .with_context(|| format!("failed to spawn {}-scoped MCP instance", self.mode.as_str()))
             .map_err(CallClientError::Spawn)?;
-        tenants.insert(key, client.clone());
+        tenants.insert(
+            key,
+            TenantEntry {
+                client: client.clone(),
+                last_used_at: now,
+            },
+        );
+        drop(tenants);
+        shutdown_clients(expired_clients).await;
         Ok(client)
     }
 
@@ -145,7 +173,7 @@ impl ClientPool {
             let mut tenants = self.tenants.lock().await;
             tenants
                 .drain()
-                .map(|(_, client)| client)
+                .map(|(_, entry)| entry.client)
                 .collect::<Vec<_>>()
         };
 
@@ -162,6 +190,56 @@ impl ClientPool {
         identity: Option<&IdentityContext>,
     ) -> std::result::Result<Option<String>, CallClientError> {
         tenant_key_for(self.mode, identity)
+    }
+
+    async fn prune_idle_clients(&self) -> usize {
+        let mut expired_clients = Vec::new();
+        {
+            let mut tenants = self.tenants.lock().await;
+            prune_idle_entries(
+                &mut tenants,
+                self.idle_ttl,
+                Instant::now(),
+                &mut expired_clients,
+            );
+        }
+        let pruned_count = expired_clients.len();
+        shutdown_clients(expired_clients).await;
+        pruned_count
+    }
+}
+
+fn prune_idle_entries(
+    tenants: &mut HashMap<String, TenantEntry>,
+    idle_ttl: Option<Duration>,
+    now: Instant,
+    expired_clients: &mut Vec<Arc<McpClient>>,
+) {
+    let Some(idle_ttl) = idle_ttl else {
+        return;
+    };
+
+    let expired_keys = tenants
+        .iter()
+        .filter_map(|(key, entry)| {
+            is_entry_idle(entry.last_used_at, now, idle_ttl).then_some(key.clone())
+        })
+        .collect::<Vec<_>>();
+
+    for key in expired_keys {
+        if let Some(entry) = tenants.remove(&key) {
+            expired_clients.push(entry.client);
+        }
+    }
+}
+
+fn is_entry_idle(last_used_at: Instant, now: Instant, idle_ttl: Duration) -> bool {
+    now.saturating_duration_since(last_used_at) >= idle_ttl
+}
+
+async fn shutdown_clients(clients: Vec<Arc<McpClient>>) {
+    for client in clients {
+        client.shutdown().await;
     }
 }
 
@@ -213,6 +291,7 @@ fn tenant_key_for(
 #[cfg(test)]
 mod tests {
     use super::{tenant_key_for, CallClientError, IdentityContext, TenantMode};
+    use std::time::{Duration, Instant};
 
     fn identity() -> IdentityContext {
         IdentityContext {
@@ -262,6 +341,21 @@ mod tests {
         assert!(matches!(
             tenant_key_for(TenantMode::Session, Some(&identity)),
             Err(CallClientError::MissingSession)
+        ));
+    }
+
+    #[test]
+    fn idle_check_respects_ttl_boundary() {
+        let start = Instant::now();
+        assert!(!super::is_entry_idle(
+            start,
+            start + Duration::from_secs(29),
+            Duration::from_secs(30)
+        ));
+        assert!(super::is_entry_idle(
+            start,
+            start + Duration::from_secs(30),
+            Duration::from_secs(30)
         ));
     }
 }

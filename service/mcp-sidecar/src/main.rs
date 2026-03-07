@@ -68,6 +68,14 @@ struct Cli {
     #[arg(long, env = "MCP_SIDECAR_MAX_TENANT_CLIENTS", default_value_t = 128)]
     max_tenant_clients: usize,
 
+    /// Idle TTL for tenant-scoped MCP instances in seconds (0 disables idle eviction).
+    #[arg(
+        long,
+        env = "MCP_SIDECAR_TENANT_IDLE_TTL_SECONDS",
+        default_value_t = 900
+    )]
+    tenant_idle_ttl_seconds: u64,
+
     /// The MCP server command and arguments (everything after --)
     #[arg(trailing_var_arg = true, required = true)]
     command: Vec<String>,
@@ -157,6 +165,11 @@ async fn main() -> Result<()> {
             spawn_config.clone(),
             cli.tenancy,
             cli.max_tenant_clients,
+            if cli.tenant_idle_ttl_seconds > 0 {
+                Some(Duration::from_secs(cli.tenant_idle_ttl_seconds))
+            } else {
+                None
+            },
         ),
         middleware: RwLock::new(mw),
         middleware_path: cli.middleware,
