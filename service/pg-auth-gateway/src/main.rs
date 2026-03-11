@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use futures::stream;
 use futures::Sink;
 use futures::SinkExt;
@@ -42,8 +42,8 @@ struct Cli {
     )]
     listen_addr: SocketAddr,
 
-    #[arg(long, env = "PG_AUTH_GATEWAY_READONLY_URL")]
-    readonly_url: String,
+    #[arg(long, env = "PG_AUTH_GATEWAY_QUERY_URL")]
+    query_url: String,
 
     #[arg(long, env = "PG_AUTH_GATEWAY_GATEKEEPER_URL")]
     gatekeeper_url: String,
@@ -53,6 +53,40 @@ struct Cli {
 
     #[arg(long, env = "PG_AUTH_GATEWAY_BIND_TTL_SECS", default_value_t = 300)]
     bind_ttl_secs: i32,
+
+    #[arg(
+        long,
+        env = "PG_AUTH_GATEWAY_ACCESS_MODE",
+        value_enum,
+        default_value_t = AccessMode::Readonly
+    )]
+    access_mode: AccessMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum AccessMode {
+    Readonly,
+    Readwrite,
+}
+
+impl AccessMode {
+    fn default_transaction_read_only(self) -> bool {
+        matches!(self, Self::Readonly)
+    }
+
+    fn session_sql(self) -> &'static str {
+        match self {
+            Self::Readonly => "SET default_transaction_read_only = on",
+            Self::Readwrite => "SET default_transaction_read_only = off",
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Readonly => "readonly",
+            Self::Readwrite => "readwrite",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -109,11 +143,12 @@ impl QueryIdentity {
 
 #[derive(Clone)]
 struct GatewayState {
-    readonly_url: String,
+    query_url: String,
     gatekeeper_url: String,
     decoding_key: DecodingKey,
     validation: Validation,
     bind_ttl_secs: i32,
+    access_mode: AccessMode,
 }
 
 struct TokenStartupHandler {
@@ -227,16 +262,17 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let state = Arc::new(GatewayState {
-        readonly_url: cli.readonly_url,
+        query_url: cli.query_url,
         gatekeeper_url: cli.gatekeeper_url,
         decoding_key: DecodingKey::from_secret(cli.identity_secret.as_bytes()),
         validation: Validation::default(),
         bind_ttl_secs: cli.bind_ttl_secs,
+        access_mode: cli.access_mode,
     });
 
     let mut parameters = DefaultServerParameterProvider::default();
     parameters.is_superuser = false;
-    parameters.default_transaction_read_only = true;
+    parameters.default_transaction_read_only = state.access_mode.default_transaction_read_only();
 
     let handlers = Arc::new(GatewayServerHandlers {
         startup: Arc::new(TokenStartupHandler {
@@ -268,10 +304,11 @@ async fn run_query(
     identity: &QueryIdentity,
     query: &str,
 ) -> PgWireResult<Vec<Response>> {
-    let readonly = connect_postgres(&state.readonly_url, "readonly").await?;
+    let query_client = connect_postgres(&state.query_url, "query").await?;
     let gatekeeper = connect_postgres(&state.gatekeeper_url, "gatekeeper").await?;
+    configure_query_session(&query_client, state.access_mode).await?;
 
-    let binding_row = readonly
+    let binding_row = query_client
         .query_one(
             "SELECT backend_pid, backend_start FROM public.current_backend_binding_key()",
             &[],
@@ -297,15 +334,16 @@ async fn run_query(
         .map_err(api_error)?;
 
     tracing::info!(
+        access_mode = state.access_mode.as_str(),
         channel = %identity.channel,
         principal = %identity.principal,
         session = %identity.session,
         user_id = identity.smith_user_id.as_deref().unwrap_or(""),
         role = %identity.smith_user_role,
-        "bound readonly postgres session"
+        "bound postgres session"
     );
 
-    let query_result = readonly.simple_query(query).await.map_err(api_error);
+    let query_result = query_client.simple_query(query).await.map_err(api_error);
 
     if let Err(err) = gatekeeper
         .query_one(
@@ -324,6 +362,13 @@ async fn run_query(
 
     let messages = query_result?;
     build_responses(messages)
+}
+
+async fn configure_query_session(client: &Client, access_mode: AccessMode) -> PgWireResult<()> {
+    client
+        .batch_execute(access_mode.session_sql())
+        .await
+        .map_err(api_error)
 }
 
 async fn connect_postgres(url: &str, label: &str) -> PgWireResult<Client> {
@@ -410,4 +455,27 @@ fn user_error(code: &str, message: &str) -> PgWireError {
 fn api_error(err: impl Into<anyhow::Error>) -> PgWireError {
     let err = err.into();
     PgWireError::ApiError(Box::new(std::io::Error::other(err.to_string())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AccessMode;
+
+    #[test]
+    fn readonly_mode_sets_readonly_flag() {
+        assert!(AccessMode::Readonly.default_transaction_read_only());
+        assert_eq!(
+            AccessMode::Readonly.session_sql(),
+            "SET default_transaction_read_only = on"
+        );
+    }
+
+    #[test]
+    fn readwrite_mode_clears_readonly_flag() {
+        assert!(!AccessMode::Readwrite.default_transaction_read_only());
+        assert_eq!(
+            AccessMode::Readwrite.session_sql(),
+            "SET default_transaction_read_only = off"
+        );
+    }
 }

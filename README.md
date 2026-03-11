@@ -86,11 +86,14 @@ The CLI fetches `/api/tools?authorized=true` by default, so catalog only returns
 ### Postgres auth gateway
 
 ```bash
-PG_AUTH_GATEWAY_READONLY_URL=postgresql://smith_readonly:smith-readonly-dev@localhost:5432/smith \
+PG_AUTH_GATEWAY_QUERY_URL=postgresql://smith_app:smith-app-dev@localhost:5432/smith \
 PG_AUTH_GATEWAY_GATEKEEPER_URL=postgresql://smith_gatekeeper:smith-gatekeeper-dev@localhost:5432/smith \
+PG_AUTH_GATEWAY_ACCESS_MODE=readonly \
 PG_AUTH_GATEWAY_IDENTITY_SECRET=change-me \
 cargo run -p pg-auth-gateway
 ```
+
+Use a purpose-created, non-owner Postgres role for `PG_AUTH_GATEWAY_QUERY_URL`. Keep `PG_AUTH_GATEWAY_ACCESS_MODE=readonly` for the safer default, or switch to `readwrite` when that role is allowed to mutate rows under Postgres RLS. The real security boundary should still be the role's grants plus RLS policies, not the gateway mode alone.
 
 ## Development
 
