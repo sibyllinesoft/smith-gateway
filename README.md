@@ -120,6 +120,21 @@ docker build -f service/catalog/Dockerfile -t catalog:local .
 docker build -f service/pg-auth-gateway/Dockerfile -t pg-auth-gateway:local .
 ```
 
+GitHub Actions publishes GHCR images for:
+
+- `ghcr.io/sibyllinesoft/mcp-sidecar`
+- `ghcr.io/sibyllinesoft/api-sidecar`
+- `ghcr.io/sibyllinesoft/pg-auth-gateway`
+- `ghcr.io/sibyllinesoft/catalog`
+- `ghcr.io/sibyllinesoft/mcp-index` (compatibility alias for `catalog`, so older `smith-core` compose files keep working)
+
+Tagging policy:
+
+- Pushes to `main` refresh the `latest` tag and a `sha-<commit>` tag.
+- Git tags like `v0.2.5` publish `v0.2.5`, `0.2.5`, and `0.2`.
+
+That lets `smith-core` keep using `SMITH_VERSION` with a real published image tag instead of relying on an unpinned local `latest` build.
+
 ## Tradeoffs
 
 The gateway deliberately stays simple in a few ways:
