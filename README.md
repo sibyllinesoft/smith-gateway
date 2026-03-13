@@ -131,7 +131,7 @@ GitHub Actions publishes GHCR images for:
 Tagging policy:
 
 - Pushes to `main` refresh the `latest` tag and a `sha-<commit>` tag.
-- Git tags like `v0.2.5` publish `v0.2.5`, `0.2.5`, and `0.2`.
+- Git tags like `v0.2.6` publish `v0.2.6`, `0.2.6`, and `0.2`.
 
 That lets `smith-core` keep using `SMITH_VERSION` with a real published image tag instead of relying on an unpinned local `latest` build.
 
