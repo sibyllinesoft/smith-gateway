@@ -6,11 +6,6 @@ on:
       - main
     tags:
       - "v*"
-    paths:
-      - ".github/workflows/publish-images.yml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "service/**"
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +13,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Rust tests
+        run: cargo test --workspace
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build release Rust binaries
+        run: cargo build --release --workspace
+
+      - name: Build Go binaries
+        run: go build ./...
+
   build:
+    needs: verify
     name: build (${{ matrix.image }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     permissions:

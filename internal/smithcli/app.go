@@ -226,7 +226,7 @@ func BootstrapConfig(args []string) (Config, error) {
 	return cfg, nil
 }
 
-func BuildRootCmd(ctx context.Context, cfg *Config) (*cobra.Command, error) {
+func BuildRootCmd(ctx context.Context, cfg *Config, version string) (*cobra.Command, error) {
 	client := NewClient(*cfg)
 	tools, err := client.FetchTools(ctx)
 	if err != nil {
@@ -239,6 +239,9 @@ func BuildRootCmd(ctx context.Context, cfg *Config) (*cobra.Command, error) {
 		Long:          "Smith loads the tool catalog from catalog at startup and exposes each server/tool pair as Cobra commands.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+	}
+	if strings.TrimSpace(version) != "" {
+		root.Version = strings.TrimSpace(version)
 	}
 	bindGlobalFlags(root.PersistentFlags(), cfg)
 	root.AddCommand(newCatalogCmd(tools))

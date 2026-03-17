@@ -103,6 +103,8 @@ cargo test --workspace
 go test ./...
 ```
 
+CI runs the same Rust and Go verification on pull requests and pushes to `main`, plus Docker smoke builds for each service image.
+
 ## Component docs
 
 - [CLI](docs/cli.md)
@@ -132,6 +134,8 @@ Tagging policy:
 
 - Pushes to `main` refresh the `latest` tag and a `sha-<commit>` tag.
 - Git tags like `v0.2.6` publish `v0.2.6`, `0.2.6`, and `0.2`.
+
+Git tags like `v0.2.6` also create GitHub Release assets for the `smith` CLI on Linux, macOS, and Windows, with per-archive SHA-256 checksums.
 
 That lets `smith-core` keep using `SMITH_VERSION` with a real published image tag instead of relying on an unpinned local `latest` build.
 

@@ -4,6 +4,8 @@ The `smith` CLI exists so humans and scripts can call any tool in the catalog wi
 
 You don't write `smith` subcommands — they're generated at startup. The CLI fetches the tool catalog, and for each registered tool, it creates a command with flags derived from the tool's input schema. If a new sidecar registers a tool called `billing.get_invoice` with parameters `invoice_id` and `format`, you'll immediately see `smith billing get_invoice --invoice-id ... --format ...` without any code changes to the CLI itself.
 
+Tagged GitHub releases publish prebuilt `smith` archives for Linux, macOS, and Windows. The binary reports its build metadata through `smith version`.
+
 ## How it works
 
 1. On startup, the CLI calls `GET /api/tools` on catalog

@@ -48,7 +48,7 @@ func ExampleBuildRootCmd_catalogList() {
 		Output:         "json",
 	}
 
-	root, err := BuildRootCmd(context.Background(), &cfg)
+	root, err := BuildRootCmd(context.Background(), &cfg, "test")
 	if err != nil {
 		panic(err)
 	}
@@ -86,7 +86,7 @@ func ExampleBuildRootCmd_executeTool() {
 		Output:         "json",
 	}
 
-	root, err := BuildRootCmd(context.Background(), &cfg)
+	root, err := BuildRootCmd(context.Background(), &cfg, "test")
 	if err != nil {
 		panic(err)
 	}
